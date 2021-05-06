@@ -1,75 +1,64 @@
-#!/usr/bin/env python3
+#! /usr/bin/env python3
 
+
+from functions import get_config as gc
+from functions import extract_frames as ef
+from functions import convert_to_grayscale as gs
+from functions import display_frames as df
+from functions import custom_queue as cq
+from os import write
+import sys
+import os
 import threading
-import cv2
-import numpy as np
-import base64
 import queue
-from queueClass import queueClass
 
-def extractFrames(fileName, extractionFrames, maxFramesToLoad=9999):
-    # Initialize frame count
-    count = 0
-    # open video file
-    vidcap = cv2.VideoCapture(fileName)
-    # read first image
-    success,image = vidcap.read()
 
-    print('Reading frame: ' , count, ' ', success)
-    while success and count < maxFramesToLoad:
-        # add the frame to the buffer
-        extractionFrames.put(image)
-        success,image = vidcap.read()
-        print('Reading frame: ' , count, ' ', success)
-        count += 1
+if __name__ == '__main__':
+    print("Starting Video Player.....")
+    print("Reading configuration file...")
 
-    print('Frame extraction complete')
-    extractionFrames.markEnd()
+    config = gc.get_config()
+    print("Configuration file successfully read")
 
-def convertToGrayScale(extractionFrames, conversionFrames):
-    count = 0
-    while True and count < 72:
-        print('Converting frame: ', count)
-        frame = extractionFrames.get() #attain the frames
-        if frame == 'end':
-            #if we see the mark
-            break #exit the loop
+    # inialize variables from config file
+    buffer_size = config["bufferSettings"]["size"]
 
-        greyFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY ) #frame to grey
-        conversionFrames.put(greyFrame) #put in the queue
-        count += 1 #increment
+    # initialize queue
+    work_queue = cq.CustomQueue()
+    converted_queue = cq.CustomQueue()
 
-    print('Frame Conversion complete')
-    conversionFrames.markEnd()
+    # initialize thread counters
+    producer_thread_counter = 1
+    consumer_thread_counter = 1
 
-def displayFrames(inputBuf):
-    count = 0
-    while True:
-        frame = inputBuf.get() #get a frame
-        if frame == 'end':
-            break #end the while
+    # while 1:
+    print("Starting Frame Producer Thread")
+    thread_name = "Producer-thread-{}".format(producer_thread_counter)
+    frame_producer_thread = ef.FrameProducerThread(
+        producer_thread_counter, thread_name, work_queue)
+    frame_producer_thread.start()
 
-        print('Displaying frame: ', count)
-        cv2.imshow('Video', frame) #show the frame image
-        if cv2.waitKey(42) and 0xFF == ord('q'): #wait for 42 ms
-            break
-        count += 1
+    print("Starting Frame Consumer Thread")
+    thread_name = "Frame-consumer-thread-{}".format(consumer_thread_counter)
+    frame_consumer_thread = gs.FrameConsumerThread(
+        producer_thread_counter, thread_name, work_queue, converted_queue)
+    frame_consumer_thread.start()
 
-    print('Finished Displaying')
-    cv2.destroyAllWindows()
+    print("Starting grayscale Frame Consumer Thread")
+    thread_name = "Grayscale-Frame-consumer-thread-{}".format(
+        consumer_thread_counter)
+    grayscale_frame_consumer_thread = df.GrayscaleFrameConsumerThread(
+        producer_thread_counter, thread_name, converted_queue)
+    grayscale_frame_consumer_thread.start()
 
-file_name = 'clip.mp4'
-extractionQueue = queueClass()
-conversionQueue = queueClass()
+    # wait for the queue to empty
+    # while not work_queue.empty():
+    #    pass
 
-#extract and convert
-extractThread = threading.Thread(target = extractFrames, args = (file_name, extractionQueue, 72)) #threading for extraction frames
-conversionThread = threading.Thread(target = convertToGrayScale, args = (extractionQueue, conversionQueue)) #threading to convert the extracted frames
+    # Wait for all threads to complete
+    # for thread in in_transfer_threads:
+    #    thread.join()
 
-#display the converted frames
-displayThread = threading.Thread(target = displayFrames, args = (conversionQueue,)) #threading to display frames
+    print("all threads completed!")
 
-#begin the thread
-extractThread.start()
-conversionThread.start()
-displayThread.start()
+    # process_message(in_transfer_threads,conn,addr)
